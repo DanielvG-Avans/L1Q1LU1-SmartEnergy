@@ -1,0 +1,209 @@
+﻿@page "/opladen-ev"
+@attribute [StreamRendering]
+@rendermode InteractiveServer
+@inject IMeasurementRepository measurementRepository;
+
+<PageTitle>Opaden EV</PageTitle>
+<h1>Opaden EV (variant F)</h1>
+<p>
+  Hier vindt u gedetailleerde informatie over de energieverbruikspatronen en de kosten van het opladen van elektrische voertuigen. 
+  De gegevens worden in real-time bijgewerkt, zodat u altijd over de meest actuele informatie beschikt.
+  Daarnaast kunt u de tabel bekijken die inzicht geeft in laadsessies over verschillende tijdsperioden. 
+  Dit stelt u in staat om trends te herkennen en uw energieverbruik efficiënter te beheren.
+  <br /><br />
+  <button class="btn" style="text-decoration: underline; text-decoration-color: blue;" data-bs-toggle="modal" data-bs-target="#AlgoritmeUitleg">Meer informatie over het algoritme</button>
+</p>
+<div class="modal fade" id="AlgoritmeUitleg" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h1 class="modal-title fs-5" id="exampleModalLabel">Algoritme informatie</h1>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Dit algoritme detecteert laadsessies op basis van energieverbruikdata. Het werkt als volgt:</p>
+
+        <ul>
+          <li>Data Inlezen: Meetgegevens worden opgehaald met een bepaald aggregatie-interval.</li><br />
+          <li>Laadsessie Start: Een laadsessie start wanneer het verbruik een ingestelde drempelwaarde overschrijdt.</li><br />
+          <li>Verbruik en Kosten: Tijdens de sessie wordt het totale verbruik in kWh en de kosten berekend. Kosten kunnen dynamisch of vast zijn.</li><br />
+          <li>Laadsessie Stop: De sessie eindigt wanneer het verbruik onder de drempel daalt en wordt alleen opgeslagen als de duur langer is dan 5 minuten.</li><br />
+      </ul>
+      <p>Het algoritme slaat alleen laadsessies op die voldoen aan de minimumduur en rondt de resultaten af voor opslag.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<hr>
+<div class="main-content">
+  <div class="laadsessies" style="margin-top: 0.5rem;">
+    <div class="function-row-container" style="display: flex; align-items: center; text-align: center; justify-content: space-between; gap: 4rem;">
+      <div class="input-row-container" style="display: flex; height: 4rem; gap: 0.5rem;">
+        <div class="form-floating mb-3" style="width: 11rem; height: 4rem;">
+          <input type="number"style="height: 4rem;" class="form-control" id="floatingInputValue1" placeholder="10019163" aria-label="10019163" aria-describedby="button-addon2" @bind="meterId">
+          <label for="floatingInputValue1">MeterID</label>
+        </div>
+        <div class="form-floating mb-3" style="width: 11rem; height: 4rem;">
+          <input type="number" min="3500" style="height: 4rem;" class="form-control" id="floatingInputValue2" placeholder="3500" aria-label="3500" aria-describedby="button-addon2" @bind="detectieVermogenW">
+          <label for="floatingInputValue2">Detectiepunt (Watt)</label>
+        </div>
+        <div class="form-floating mb-3" style="width: 11rem; height: 4rem;">
+          <input type="number" min="1" max="30" style="height: 4rem;" class="form-control" id="floatingInputValue3" placeholder="3500" aria-label="3500" aria-describedby="button-addon2" @bind="numberOfDays">
+          <label for="floatingInputValue3">Aantal dagen</label>
+        </div>
+        <div class="form-floating mb-3" style="width: 11rem; height: 4rem;">
+          <input type="number" min="0" style="height: 4rem;" class="form-control" id="floatingInputValue4" placeholder="5" aria-label="5" aria-describedby="button-addon2" @bind="minimumduur">
+          <label for="floatingInputValue4">Minimumduur (minuten)</label>
+        </div>
+        <div class="form-floating mb-3" style="width: 11rem; height: 4rem;">
+          <input type="number" min="0" style="height: 4rem;" class="form-control" id="floatingInputValue5" placeholder="0,25" aria-label="0,25" aria-describedby="button-addon2" @bind="prijsCatagorieVast">
+          <label for="floatingInputValue5">Prijs per kWh (Euro)</label>
+        </div>
+      </div>
+      <div class="button-row-container" style="display: flex; height: 3rem; gap: 1rem;" >
+        <div class="btn-group" role="group" aria-label="Basic radio toggle button group">
+          <input type="radio" class="btn-check" name="btnradio" id="btnradio2" autocomplete="off" checked />
+          <label class="btn btn-outline-primary d-flex justify-content-center align-items-center" for="btnradio2" @onclick="() => prijsCategorieDynamisch = false" checked>Vast</label>
+          <input type="radio" class="btn-check" name="btnradio" id="btnradio1" autocomplete="off" />
+          <label class="btn btn-outline-primary d-flex justify-content-center align-items-center" for="btnradio1" @onclick="() => prijsCategorieDynamisch = true">Dynamisch</label>
+        </div>
+         <button class="btn btn-primary" type="submit" @onclick="OnInitializedAsync">Refresh</button>
+      </div>
+    </div>
+      @if (currentPowerData != null)
+      {
+        @if(Laadsessies.Count == 0 || Laadsessies == null) 
+        {
+          <p style="margin-top: 2rem;">Helaas geen laadsessies beschikbaar. Probeer de pagina opnieuw te laden!</p>
+        }
+        else
+        {
+          <div style="margin-top: 1rem;">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Start</th>
+                  <th>Stop</th>
+                  <th>Duration</th>
+                  <th>Used kWh</th>
+                  <th>Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (Laadsessie sessie in Laadsessies)
+                {
+                  <tr>
+                    <td>@sessie.Start</td>
+                    <td>@sessie.Stop</td>
+                    <td>@sessie.Duur</td>
+                    <td>@sessie.TotaalKWh.ToString("F2") kWh</td>
+                    <td>@sessie.Prijs.ToString("C")</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }      
+      }
+      else
+      {
+        <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; width: 100%;">
+          <p style="margin-top: 1rem;">Calculating</p>
+          <div class="spinner-border text-dark" role="status">
+            <span class="visually-hidden">Data wordt opgehaald...</span>
+          </div>
+        </div> 
+      }
+    </div>
+  </div> 
+
+
+@code {
+  // Make custom data records
+  public record Laadsessie(DateTime Start, DateTime Stop, TimeSpan Duur, double TotaalKWh, double Prijs);
+
+  // Variable for database connection
+  double detectieVermogenW = 3500D;
+  int meterId = 10019163;
+  int numberOfDays = 30;
+  string aggegationWindow = "1m";
+  private List<Measurement>? currentPowerData;
+
+// Variable for LaadsessieDetectie
+  int minimumduur = 5;
+  double prijsCatagorieVast = 0.25D;
+  bool prijsCategorieDynamisch = false;
+  private List<Laadsessie> Laadsessies = new List<Laadsessie>();
+
+
+protected override async Task OnInitializedAsync()
+{
+  await LoadChargingSessionAsync(); 
+}
+
+private async Task LoadChargingSessionAsync()
+{
+    Laadsessies = new List<Laadsessie>();
+    bool laadsessieActief = default;
+    double totaalkWhLaadsessie = default;
+    double prijsLaadsessie = default;
+    TimeSpan duurLaadsessie = default;
+    DateTime startLaadsessie = default;
+    DateTime stopLaadsessie = default;
+    currentPowerData = await this.measurementRepository.GetPowerUsed(meterId, numberOfDays, aggegationWindow);
+
+  // Algoritme laadsessie detectie
+    foreach(var measurement in currentPowerData) {
+      if(measurement.Value.Value > detectieVermogenW && laadsessieActief == false) 
+      {
+        startLaadsessie = measurement.Timestamp;
+        laadsessieActief = true;
+        totaalkWhLaadsessie += measurement.Value.Value * (1D / 60D) / 1000D;
+        prijsLaadsessie += measurement.EnergyPrice.Value * (measurement.Value.Value * (1D / 60D) / 1000D);
+      }
+
+      else if(measurement.Value.Value > detectieVermogenW && laadsessieActief == true) 
+      {
+        totaalkWhLaadsessie += measurement.Value.Value * (1D / 60D) / 1000D;
+        prijsLaadsessie += measurement.EnergyPrice.Value * (measurement.Value.Value * (1D / 60D) / 1000D);
+      }
+
+      else if(measurement.Value < detectieVermogenW && laadsessieActief == true) 
+      {
+        stopLaadsessie = measurement.Timestamp;
+        duurLaadsessie = stopLaadsessie.Subtract(startLaadsessie);
+      
+      // Calculate prijs met vaste prijs
+        if(prijsCategorieDynamisch == false) 
+        {
+          prijsLaadsessie = totaalkWhLaadsessie * prijsCatagorieVast;
+        }
+        
+        prijsLaadsessie = Math.Round(prijsLaadsessie, 2);
+        totaalkWhLaadsessie = Math.Round(totaalkWhLaadsessie, 2);
+      
+      // Check minimum duration
+        if(duurLaadsessie.TotalMinutes >= minimumduur)
+        {
+          var singleLaadsessie = new Laadsessie(startLaadsessie, stopLaadsessie, duurLaadsessie, totaalkWhLaadsessie, prijsLaadsessie);
+          Laadsessies.Add(singleLaadsessie);
+        }
+        
+        laadsessieActief = default;
+        totaalkWhLaadsessie = default;
+        prijsLaadsessie = default;
+        duurLaadsessie = default;
+        startLaadsessie = default;
+        stopLaadsessie = default;
+      }
+
+      else {
+        continue;
+      }
+    }
+    await InvokeAsync(StateHasChanged);
+  }
+}

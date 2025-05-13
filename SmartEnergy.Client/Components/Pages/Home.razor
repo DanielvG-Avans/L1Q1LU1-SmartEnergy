@@ -1,0 +1,155 @@
+﻿@page "/"
+@attribute [StreamRendering]
+@using ApexCharts
+@rendermode InteractiveServer
+@inject IMeasurementRepository measurementRepository;
+
+<PageTitle>Home</PageTitle>
+
+<h1>Welkom bij Smart Energy Analytics</h1>
+
+<p>Optimaliseer je energieverbruik en bespaar kosten met ons innovatieve energie-analyseplatform.
+  Smart Energy Analytics helpt je om inzicht te krijgen in je energiegebruik, trends te ontdekken
+  en slimmere beslissingen te nemen voor een duurzamer huishouden of bedrijf. Met gedetailleerde
+  rapportages en real-time data monitor je eenvoudig je verbruik en bespaar je op energie.
+</p>
+
+<div class="card-container" style="display: flex; width: 100%; justify-content: center; align-self: center; gap: 2.5rem; marig-top: 1rem;">
+  <div class="card" style="width: 20rem;">
+    <div style="display: flex; align-items: center; justify-content: center; tekst-align: center;">
+      <img src="assets/PowerGrid.png" style="width: 40%; height: auto;" class="card-img-top" alt="Power Grid Icon">
+    </div>
+    <div class="card-body">
+      <h5 class="card-title">Verbruik</h5>
+      <p class="card-text">Uw stroomverbruik van het net van de afgelopen @numberOfDays dagen:</p>
+      <div style="display: flex; justify-content: center;">
+        <h3>
+          <span style=" display: flex; background-color: orangered !important; color: white !important; justify-content: center; width: fit-content;" class="badge text-bg-secondary">
+            @if(verbruiktThuis == 0) 
+            {
+              <div class="spinner-border text-dark" style="padding-top: 1.5rem" role="status">
+                <span class="visually-hidden">Data wordt opgehaald...</span>
+              </div>
+            } 
+            else
+            {
+              <span>@verbruiktThuis kWh</span>
+            }
+          </span>
+        </h3>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="width: 20rem;">
+    <div style="display: flex; align-items: center; justify-content: center; tekst-align: center;">
+      <img src="assets/SolarPanel.png" style="width: 40%; height: auto;" class="card-img-top" alt="Solar Panel Icon">
+    </div>
+    <div class="card-body">
+      <h5 class="card-title">Opgewekt</h5>
+      <p class="card-text">Uw opgewekte stroom van de afgelopen @numberOfDays dagen:</p>
+      <div style="display: flex; justify-content: center;">
+        <h3>
+          <span style=" display: flex; background-color: lightgreen !important; color: white !important;" class="badge text-bg-secondary">
+            @if(opgewektZonnepanelen == 0) 
+            {
+              <div class="spinner-border text-dark" style="padding-top: 1.5rem" role="status">
+                <span class="visually-hidden">Data wordt opgehaald...</span>
+              </div>
+            } 
+            else 
+            {
+              <span>@opgewektZonnepanelen kWh</span>
+            }
+          </span>
+        </h3>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="width: 20rem;">
+    <div style="display: flex; align-items: center; justify-content: center; tekst-align: center;">
+      <img src="assets/ElectricCarIcon.png" style="width: 40%; height: auto;" class="card-img-top" alt="EV Icon" />
+    </div>
+    <div class="card-body">
+      <h5 class="card-title">Opladen EV</h5>
+      <p class="card-text">Op deze pagina staat informatie met betrekking tot de laadsessies.</p>
+      <div style="display: flex; justify-content: center; align-items: flex-end; text-align: center;">
+        <a href="/opladen-ev" class="btn btn-primary">Ga naar uitwerking</a>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="grafiek-card card" style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; margin-top: 1rem; margin-bottom: 2rem;;">
+  <div class="card-body">
+    <h5 class="card-title">Energie consumptie vs energie opwekking laatste @numberOfDays dagen</h5>
+    @if(energyConsumedData == null)
+    {
+      <div class="spinner-border text-dark" style="padding-top: 1.5rem" role="status">
+        <span class="visually-hidden">Data wordt opgehaald...</span>
+      </div>
+    }
+    else 
+    {
+      <div class="DeGrafiek" style="width: 55vw; height: auto;">
+        <ApexChart TItem="Measurement">
+          <ApexPointSeries TItem="Measurement"
+              Items="PowerConsumed"
+              Name="Verbruik"
+              SeriesType="SeriesType.Line"
+              XValue="@(e => e.Timestamp)"
+              YValue="@(e => (decimal?)e.Value  * -1)"
+              />
+          <ApexPointSeries TItem="Measurement"
+            Items="PowerProduced"
+            Name="Opgewekt"
+            SeriesType="SeriesType.Line"
+            XValue="@(e => e.Timestamp)"
+            YValue="@(e => (decimal?)e.Value  * -1)" 
+            />
+        </ApexChart>
+      </div>
+    }
+  </div>
+</div>
+
+@code {
+// Variables for database connection
+  int meterId = 10019163;
+  int numberOfDays = 7;
+  string aggegationWindow = "1h";
+  private List<Measurement>? energyConsumedData;
+  private List<Measurement>? energyProducedData;
+  private List<Measurement>? PowerConsumed;
+  private List<Measurement>? PowerProduced;
+
+// Variables for algoritm
+  double verbruiktThuis;
+  double opgewektZonnepanelen;
+
+
+  protected override async Task OnInitializedAsync()
+  {
+  // Get data from database for cards and graphs
+    energyConsumedData = await this.measurementRepository.GetEnergyConsumed(meterId, numberOfDays, aggegationWindow);
+    energyProducedData = await this.measurementRepository.GetEnergyProduced(meterId, numberOfDays, aggegationWindow);
+    PowerProduced = await this.measurementRepository.GetPowerProduced(meterId, numberOfDays, aggegationWindow);
+    PowerConsumed = await this.measurementRepository.GetPowerUsed(meterId, numberOfDays, aggegationWindow);
+  
+    // Calculate the energy used this numberOfDays
+    foreach(var measurement in energyConsumedData) 
+    {
+      if (energyConsumedData != null && energyConsumedData.Count > 1)
+      {
+        verbruiktThuis = energyConsumedData.Last().Value.Value - energyConsumedData.First().Value.Value;
+      }
+    }
+
+  // Calculate the energy produced this numberOfDays
+    foreach(var measurement in energyProducedData) 
+    {
+      if (energyProducedData != null && energyProducedData.Count > 1)
+      {
+      opgewektZonnepanelen = energyProducedData.Last().Value.Value - energyProducedData.First().Value.Value;
+      }
+    }
+  }
+}
